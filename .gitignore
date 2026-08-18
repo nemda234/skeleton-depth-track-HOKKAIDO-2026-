@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+models/*.pth
+models/*.pt
+models/*.onnx
+third_party/
+outputs/
+*.mp4
+*.avi
+*.jsonl
