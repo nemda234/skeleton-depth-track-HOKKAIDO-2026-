@@ -1,6 +1,3 @@
-# Cấu hình mặc định — chỉnh trực tiếp file này, KHÔNG cần sửa code.
-# Xem README phần "RTX 2050" để biết nên hạ tham số nào trước nếu chậm/OOM.
-
 paths:
   depth_checkpoint_url: "https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_vits.pth"
   depth_torch_ckpt: "models/depth_anything_v2_vits.pth"
@@ -9,28 +6,27 @@ paths:
 
 
 depth:
-  input_size: 252         # notebook Kaggle dùng 392 (đủ VRAM T4 16GB). Trên 2050 4GB nên hạ về 252, thậm chí 224 nếu vẫn OOM.
-  encoder: "vits"          # bản nhẹ nhất, giữ nguyên
-  batch_size: 1             # notebook Kaggle dùng batch=30 để tối ưu THÔNG LƯỢNG (throughput), chấp nhận trễ theo cụm.
-                             # Ở đây batch=1 vì cần pose+track chạy ngay sau MỖI frame -> ưu tiên ĐỘ TRỄ thấp, không phải throughput.
-                             # Có thể thử batch=2-4 nếu muốn cân bằng, nhưng phải gộp cả pose theo batch tương ứng (chưa hỗ trợ ở bản này).
-  use_torch_compile: false  # để false khi test trên 2050 - warmup có thể mất vài phút hoặc lỗi tùy driver. Bật thử nếu chạy video dài, ổn định.
-  colormap: "INFERNO"       # giữ đúng màu như notebook gốc. Đặt null để tắt tô màu.
+  input_size: 252         
+  encoder: "vits"          
+  batch_size: 1             
+                             
+
+  use_torch_compile: false  
+  colormap: "INFERNO"       
 
 pose:
-  imgsz: 320                # hạ xuống 256/224 nếu chậm hoặc OOM trên 2050
+  imgsz: 320              
   half: true
   conf: 0.4
-  tracker: "bytetrack.yaml"    # nhẹ, đủ tốt cho hầu hết trường hợp. "botsort.yaml" chính xác hơn nhưng chậm hơn
-  every_n_frames: 1         # >1 để bỏ bớt tần suất chạy pose (vd 2 = chạy pose mỗi 2 frame)
+  tracker: "bytetrack.yaml"    
+  every_n_frames: 1        
 
 pipeline:
-  resize_input_to: null     # vd [960, 540] để giảm độ phân giải input trước khi xử lý, null = giữ nguyên
-  queue_maxsize: 8           # giảm xuống 3-4 nếu máy ít RAM
+  resize_input_to: null    
+  queue_maxsize: 8     
   save_video: true
   save_skeleton_data: true
-  # LƯU Ý: bản Kaggle gốc có time.sleep() để ghìm tốc độ khớp thời lượng video gốc.
-  # Bản local này CHỦ ĐỘNG BỎ throttle đó vì mục tiêu là chạy càng nhanh càng tốt, không phải mô phỏng đúng nhịp gốc.
+
 
 output:
   dir: "outputs"
