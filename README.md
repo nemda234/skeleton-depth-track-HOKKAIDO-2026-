@@ -1,12 +1,19 @@
-Pipeline realtime:
+# Realtime Video → Pseudo-3D Skeleton
 
-Video → Depth Anything V2 → YOLO-Pose + ByteTrack → Pseudo-3D Skeleton
+Pipeline xử lý video để tạo **pseudo-3D skeleton** với thông tin `(x, y, depth)` theo từng `track_id`.
 
-Hệ thống xử lý video để tạo skeleton có thêm chiều depth (x, y, depth) theo từng track_id, đồng thời xuất video trực quan và dữ liệu có cấu trúc để dùng cho action recognition ở bước sau.
+Hệ thống kết hợp:
 
-Bản này được chuyển từ notebook Kaggle (T4) sang chạy local, tối ưu để thử nghiệm trên GPU yếu hơn, ví dụ RTX 2050 4GB VRAM.
+* **Depth Anything V2** — ước lượng monocular relative depth
+* **YOLO-Pose** — phát hiện người và keypoints
+* **ByteTrack** — duy trì `track_id` giữa các frame
+* **JSONL output** — lưu dữ liệu skeleton có cấu trúc để sử dụng cho các bước Action Recognition tiếp theo
 
-📁 Cấu trúc project
+Pipeline đồng thời xuất video trực quan để dễ kiểm tra kết quả tracking, pose và depth.
+
+## 📁 Cấu trúc project
+
+```text
 skeleton-depth-track/
 ├── configs/
 │   └── default.yaml          # Tham số tốc độ / độ chính xác
@@ -18,183 +25,287 @@ skeleton-depth-track/
 ├── scripts/
 │   ├── prepare_models.py     # Chuẩn bị model
 │   └── run.py                # Entrypoint
-├── models/                   # Model đã convert (gitignore)
+├── models/                   # Model đã chuẩn bị (gitignore)
 ├── outputs/                  # Output video + data (gitignore)
 └── requirements.txt
+```
 
-🚀 Cài đặt
-1. Tạo virtual environment
-Windows:
+## 🚀 Cài đặt
 
+### 1. Tạo virtual environment
+
+**Windows:**
+
+```bash
 python -m venv .venv
 .venv\Scripts\activate
+```
 
-Linux:
+**Linux / macOS:**
 
+```bash
 python -m venv .venv
 source .venv/bin/activate
+```
 
-2. Cài dependencies
+### 2. Cài dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
-Nếu torch không nhận đúng CUDA, cài PyTorch theo hướng dẫn chính thức:
+Nếu PyTorch chưa nhận đúng CUDA, có thể cài phiên bản PyTorch phù hợp với hệ thống theo hướng dẫn chính thức:
 
 https://pytorch.org/get-started/locally/
 
-3. Kiểm tra GPU
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+### 3. Kiểm tra GPU
 
-Nếu kết quả tương tự:
+```bash
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+```
 
-True NVIDIA GeForce RTX 2050
+Nếu CUDA được nhận, kết quả sẽ có dạng:
 
-thì GPU đã được nhận.
+```text
+True NVIDIA ...
+```
 
-🧠 Chuẩn bị model
-Chạy một lần:
+Nếu không có GPU CUDA, pipeline vẫn có thể chạy trên CPU nhưng tốc độ sẽ thấp hơn đáng kể.
 
-python scripts/prepare_models.py --pose-weights /duong/dan/toi/pose_model.pt
+## 🧠 Chuẩn bị model
 
-Trong đó --pose-weights là đường dẫn tới file .pt YOLO-Pose bạn đã có.
+Chạy:
+
+```bash
+python scripts/prepare_models.py --pose-weights /path/to/pose_model.pt
+```
+
+Trong đó `--pose-weights` là đường dẫn tới file YOLO-Pose `.pt`.
 
 Script sẽ:
 
-Clone repository Depth Anything V2.
-Tải checkpoint Depth Anything V2 vits.
-Giữ checkpoint ở định dạng PyTorch .pth.
-Copy YOLO-Pose weights vào thư mục models/.
-Sau khi chuẩn bị xong:
+1. Clone repository **Depth Anything V2**
+2. Tải checkpoint **Depth Anything V2 ViT-S**
+3. Lưu checkpoint ở định dạng PyTorch `.pth`
+4. Copy YOLO-Pose weights vào thư mục `models/`
 
+Sau khi chuẩn bị:
+
+```text
 models/
 ├── depth_anything_v2_vits.pth
 └── pose_model.pt
+```
 
-▶️ Chạy pipeline
-Webcam
+## ▶️ Chạy pipeline
+
+### Webcam
+
+```bash
 python scripts/run.py --source 0
+```
 
-Video
+### Video
+
+```bash
 python scripts/run.py --source path/to/video.mp4
+```
 
-📦 Output
-Sau khi chạy xong, kết quả nằm trong outputs/:
+Pipeline sẽ đọc video, thực hiện depth estimation, pose estimation và tracking, sau đó ghi kết quả ra thư mục `outputs/`.
 
+## 📦 Output
+
+Sau khi chạy:
+
+```text
 outputs/
 ├── annotated.mp4
 └── skeleton_data.jsonl
+```
 
-annotated.mp4
-Video trực quan có:
+### `annotated.mp4`
 
-Depth map
-Skeleton
-track_id
-Thông tin tracking
-skeleton_data.jsonl
-Mỗi dòng tương ứng với một frame.
+Video trực quan bao gồm:
 
-Dữ liệu bao gồm:
+* Depth map
+* Human skeleton
+* `track_id`
+* Thông tin tracking
+* Các thông tin debug cần thiết để kiểm tra pipeline
 
-frame_idx
-track_id
-Tọa độ (x, y)
-Confidence
-Depth tại từng keypoint
-Dữ liệu này có thể đưa tiếp vào model action recognition như ST-GCN mà không cần đọc lại video.
+### `skeleton_data.jsonl`
 
-⚙️ Tối ưu cho RTX 2050 4GB
-RTX 2050 mobile yếu hơn T4 khá nhiều và chỉ có 4GB VRAM, trong khi T4 có 16GB.
+Mỗi dòng tương ứng với một frame và chứa dữ liệu của các person được tracking trong frame đó.
 
-Do đó bản local sử dụng cấu hình nhẹ hơn:
+Các thông tin chính gồm:
 
+* `frame_idx`
+* `track_id`
+* Tọa độ `(x, y)` của keypoint
+* Confidence
+* Depth tại từng keypoint
+
+Dữ liệu có thể được sử dụng trực tiếp làm input cho các bước **Action Recognition**, ví dụ ST-GCN, mà không cần đọc và xử lý lại video gốc.
+
+## ⚙️ Tối ưu hiệu năng
+
+Pipeline được thiết kế để có thể điều chỉnh giữa **tốc độ** và **độ chính xác**, đặc biệt khi chạy trên các GPU có giới hạn VRAM.
+
+Một cấu hình nhẹ có thể sử dụng:
+
+```yaml
 batch_size: 1
-input_size: 252
 
-Nếu vẫn chậm hoặc bị OOM, điều chỉnh theo thứ tự:
-
-1. Giảm kích thước YOLO-Pose
 pose:
   imgsz: 256
 
-Hoặc:
+depth:
+  input_size: 252
+```
 
+Nếu gặp tình trạng chậm hoặc thiếu VRAM, có thể điều chỉnh theo thứ tự sau.
+
+### 1. Giảm kích thước YOLO-Pose
+
+```yaml
 pose:
   imgsz: 224
+```
 
-2. Giảm kích thước Depth
+Kích thước input nhỏ hơn giúp giảm thời gian inference và VRAM sử dụng.
+
+### 2. Giảm kích thước Depth Anything V2
+
+```yaml
 depth:
   input_size: 224
+```
 
-input_size cần chia hết cho 14.
+`input_size` cần phù hợp với kiến trúc của model; với cấu hình hiện tại nên sử dụng kích thước chia hết cho `14`.
 
-3. Chạy pose cách frame
+### 3. Chạy pose cách frame
+
+```yaml
 pose:
   every_n_frames: 2
+```
 
-Pose sẽ chạy mỗi 2 frame trong khi depth vẫn chạy mỗi frame, giúp giảm đáng kể tải GPU.
+Khi đó pose estimation chỉ chạy mỗi 2 frame, trong khi depth vẫn có thể được tính trên từng frame.
 
-4. Tắt torch.compile
+Cách này có thể giảm đáng kể chi phí inference của pose model.
+
+### 4. Tắt `torch.compile`
+
+```yaml
 depth:
   use_torch_compile: false
+```
 
-Trên GPU consumer, torch.compile có thể warmup lâu hoặc gặp lỗi tùy phiên bản driver/kernel. Với video ngắn, thường không đáng để đánh đổi.
+`torch.compile` có thể giúp tăng tốc trong một số môi trường, nhưng cũng có thời gian warmup và phụ thuộc vào phiên bản PyTorch, CUDA và driver.
 
-5. Giảm resolution input
-Nếu vẫn OOM, giảm độ phân giải đầu vào thông qua:
+Với video ngắn hoặc môi trường thử nghiệm, có thể tắt tùy chọn này để giảm độ phức tạp.
 
+### 5. Giảm resolution đầu vào
+
+Nếu vẫn gặp vấn đề về hiệu năng hoặc VRAM, có thể giảm resolution của video thông qua:
+
+```yaml
 pipeline:
   resize_input_to: ...
+```
 
-Ngoài ra nên đóng các ứng dụng khác đang sử dụng GPU.
+Nên ưu tiên tìm mức resolution phù hợp với mục tiêu sử dụng thay vì cố đạt FPS cao nhất.
 
-📈 FPS
-Không nhất thiết phải đạt 30 FPS.
+## 📈 FPS và mục tiêu của pipeline
 
-Mục tiêu chính của project là tạo dữ liệu skeleton cho action recognition, không phải hệ thống cảnh báo realtime.
+Pipeline hướng tới việc **tạo dữ liệu skeleton chất lượng cho Action Recognition**, không nhất thiết phải đạt realtime 30 FPS trong mọi trường hợp.
 
-Vì vậy:
+Trong nhiều trường hợp:
 
-15–20 FPS ổn định tốt hơn 30 FPS nhưng bị dropped frame hoặc OOM.
+> FPS ổn định và dữ liệu tracking liên tục quan trọng hơn FPS tối đa.
 
-Bản local cũng đã bỏ time.sleep() throttle có trong notebook Kaggle. Pipeline sẽ chạy nhanh nhất có thể thay vì cố mô phỏng đúng tốc độ video gốc.
+Pipeline cũng không sử dụng `time.sleep()` để cố mô phỏng tốc độ phát video gốc. Thay vào đó, hệ thống xử lý nhanh nhất có thể theo khả năng của phần cứng và cấu hình inference.
 
-🔍 Tracking & Depth
-ByteTrack
-Track ID được duy trì bằng:
+## 🔍 Tracking & Depth
 
-Ultralytics.track(persist=True)
+### ByteTrack
 
-Việc giữ track_id ổn định rất quan trọng vì chuỗi skeleton của cùng một người phải liên tục giữa các frame để phục vụ action recognition.
+Track ID được duy trì thông qua cơ chế tracking của Ultralytics:
 
-Depth
-Depth Anything V2 cung cấp monocular relative depth.
+```python
+model.track(..., persist=True)
+```
 
-Đây là depth tương đối, không phải khoảng cách thực tế.
+Việc duy trì `track_id` ổn định rất quan trọng đối với Action Recognition.
 
-Ví dụ:
+Ví dụ, skeleton của cùng một người cần tạo thành một chuỗi liên tục:
 
+```text
+Frame 1 → track_id 3
+Frame 2 → track_id 3
+Frame 3 → track_id 3
+Frame 4 → track_id 3
+...
+```
+
+Chuỗi này sau đó có thể được sử dụng làm temporal sequence cho các mô hình Action Recognition.
+
+### Depth Anything V2
+
+Depth Anything V2 cung cấp **monocular relative depth**.
+
+Do đó:
+
+```text
 (x, y, depth)
+```
 
-nên được hiểu là pseudo-3D skeleton, không nên dùng để đo chính xác khoảng cách ngoài đời.
+nên được hiểu là **pseudo-3D coordinates**, không phải tọa độ 3D tuyệt đối trong không gian.
 
-🎯 Mục tiêu tiếp theo
-Pipeline hiện tại tạo dữ liệu đầu vào cho bước tiếp theo:
+Depth không nên được sử dụng trực tiếp để suy ra khoảng cách thực tế theo mét nếu chưa có bước calibration hoặc metric depth phù hợp.
 
-Video
-  │
-  ├── Depth Anything V2
-  │
-  └── YOLO-Pose
-          │
-          ▼
-      ByteTrack
-          │
-          ▼
-   Skeleton + Depth
-          │
-          ▼
-      JSONL dataset
-          │
-          ▼
-   Action Recognition
-       (ST-GCN)
+## 🎯 Pipeline tổng thể
+
+```text
+                    Video
+                      │
+             ┌────────┴────────┐
+             │                 │
+             ▼                 ▼
+      Depth Anything V2     YOLO-Pose
+             │                 │
+             │                 ▼
+             │             ByteTrack
+             │                 │
+             └────────┬────────┘
+                      ▼
+              Skeleton + Depth
+                      │
+                      ▼
+                  JSONL Data
+                      │
+                      ▼
+              Action Recognition
+                   (ST-GCN)
+```
+
+## 🔮 Mục tiêu mở rộng
+
+Pipeline hiện tại tập trung vào việc tạo dữ liệu đầu vào cho Action Recognition.
+
+Các bước tiếp theo có thể bao gồm:
+
+* Chuẩn hóa skeleton sequence
+* Xử lý missing keypoints
+* Temporal interpolation
+* Chuẩn hóa relative depth
+* Xây dựng dataset train/validation/test
+* Chuyển JSONL sang format phù hợp với ST-GCN
+* Huấn luyện và đánh giá Action Recognition model
+* So sánh 2D skeleton với pseudo-3D skeleton
+
+## 📌 Lưu ý
+
+Depth từ Depth Anything V2 là **relative depth**. Vì vậy, output `(x, y, depth)` nên được xem là representation pseudo-3D phục vụ machine learning, tracking và action recognition, thay vì hệ tọa độ 3D có đơn vị vật lý.
+
+Mục tiêu chính của pipeline là biến video thành dữ liệu skeleton có **spatial information + temporal tracking**, tạo nền tảng cho các bài toán Action Recognition ở bước tiếp theo.
